@@ -9,14 +9,239 @@ using Sitecore.Globalization;
 using Sitecore.Web.UI.Sheer;
 using System.Collections.Specialized;
 using System.Threading;
+using Sitecore.Common;
+using Sitecore.Data;
+using Sitecore.Data.Fields;
+using Sitecore.Data.Managers;
+using Sitecore.SecurityModel;
+using Sitecore.Shell.Framework.Commands;
+using Sitecore.Sites;
+using Sitecore.Workflows;
 
-namespace Sitecore.Shell.Framework.Commands
+namespace Sitecore.Support.Shell.Framework.Commands
 {
 
 
 	[Serializable]
-	public class AddMaster : Command
+	public class AddMaster : Sitecore.Buckets.Pipelines.UI.AddMaster
 	{
+
+	  private class WorkflowSubstitute
+	  {
+
+	    public bool Enabled
+	    {
+	      get
+	      {
+	        switch (Switcher<WorkflowContextState, WorkflowContextState>.CurrentValue)
+	        {
+	          case WorkflowContextState.Default:
+	          {
+	            SiteContext site = Context.Data.Site;
+	            if (site != null)
+	            {
+	              return site.EnableWorkflow;
+	            }
+	            return false;
+	          }
+	          case WorkflowContextState.Disabled:
+	            return false;
+	          default:
+	            return true;
+	        }
+	      }
+	    }
+
+			/// <summary>
+			/// Adds the item.
+			/// </summary>
+			/// <param name="name">The name.</param>
+			/// <param name="branch">The master.</param>
+			/// <param name="parent">The parent.</param>
+			/// <returns></returns>
+			public Item AddItem(string name, BranchItem branch, Item parent)
+	    {
+	      Error.AssertString(name, "name", false);
+	      Error.AssertObject(branch, "master");
+	      Error.AssertObject(parent, "parent");
+	      Item item = null;
+	      try
+	      {
+	        item = parent.Add(name, branch);
+	        this.ProcessAdded(item);
+	        return item;
+	      }
+	      catch (WorkflowException ex)
+	      {
+	        this.HandleException(ex);
+	        throw;
+	      }
+	    }
+
+	    /// <summary>
+	    /// Adds the item.
+	    /// </summary>
+	    /// <param name="name">The name.</param>
+	    /// <param name="template">The template.</param>
+	    /// <param name="parent">The parent.</param>
+	    /// <returns></returns>
+	    public Item AddItem(string name, TemplateItem template, Item parent)
+	    {
+	      Error.AssertString(name, "name", false);
+	      Error.AssertObject(template, "template");
+	      Error.AssertObject(parent, "parent");
+	      try
+	      {
+	        Item item = parent.Add(name, template);
+	        this.ProcessAdded(item);
+	        return item;
+	      }
+	      catch (WorkflowException ex)
+	      {
+	        this.HandleException(ex);
+	        throw;
+	      }
+	    }
+
+			private void HandleException(WorkflowException ex)
+			{
+			  try
+			  {
+			    if (ex.Item != null)
+			    {
+			      using (new SecurityDisabler())
+			      {
+			        ex.Item.Delete();
+			      }
+			    }
+			  }
+			  catch (Exception exception)
+			  {
+			    Log.Error("Error handling workflow exception", exception, this);
+			  }
+			}
+
+			private void ProcessAdded(Item item)
+	    {
+	      if (item != null)
+	      {
+	        this.StartEditing(item);
+	      }
+	    }
+
+	    public bool HasDefaultWorkflow(Item item)
+	    {
+	      Field field = item.Fields[FieldIDs.DefaultWorkflow];
+	      if (!this.Enabled)
+	      {
+	        return false;
+	      }
+	      if (field != null)
+	      {
+	        string inheritedValue = field.InheritedValue;
+	        return inheritedValue.Length > 0;
+	      }
+	      return false;
+	    }
+
+	    /// <summary>
+	    /// Determines whether the specified item has a workflow.
+	    /// </summary>
+	    /// <param name="item">The item.</param>
+	    /// <returns>
+	    /// 	<c>true</c> if the specified item has a workflow; otherwise, <c>false</c>.
+	    /// </returns>
+	    public bool HasWorkflow(Item item)
+	    {
+	      if (!this.Enabled)
+	      {
+	        return false;
+	      }
+	      return this.GetWorkflow(item) != null;
+	    }
+
+			public Item StartEditing(Item item)
+	    {
+	      Error.AssertObject(item, "item");
+	      if (Settings.RequireLockBeforeEditing && !Context.User.IsAdministrator)
+	      {
+	        if (Context.Data.IsAdministrator)
+	        {
+	          return this.Lock(item);
+	        }
+	        if (StandardValuesManager.IsStandardValuesHolder(item))
+	        {
+	          return this.Lock(item);
+	        }
+	        if (!this.HasWorkflow(item) && !this.HasDefaultWorkflow(item))
+	        {
+	          return this.Lock(item);
+	        }
+	        if (!this.IsApproved(item))
+	        {
+	          return this.Lock(item);
+	        }
+	        Item item2 = item.Versions.AddVersion();
+	        if (item2 != null)
+	        {
+	          return this.Lock(item2);
+	        }
+	        return null;
+	      }
+	      return item;
+	    }
+
+	    public bool IsApproved(Item item)
+	    {
+	      return this.IsApproved(item, null);
+	    }
+
+	    /// <summary>
+	    /// Determines whether the specified item is approved.
+	    /// </summary>
+	    /// <param name="item">The item.</param>
+	    /// <param name="targetDatabase">The pre-production database to check approval for.</param>
+	    /// <returns>
+	    ///   <c>true</c> if the specified item is approved; otherwise, <c>false</c>.
+	    /// </returns>
+	    public bool IsApproved(Item item, Database targetDatabase)
+	    {
+	      Error.AssertObject(item, "item");
+	      IWorkflow workflow = this.GetWorkflow(item);
+	      if (workflow != null)
+	      {
+	        return workflow.IsApproved(item, targetDatabase);
+	      }
+	      return true;
+	    }
+
+	    public IWorkflow GetWorkflow(Item item)
+	    {
+	      Error.AssertObject(item, "item");
+	      if (this.Enabled)
+	      {
+	        IWorkflowProvider workflowProvider = item.Database.WorkflowProvider;
+	        if (workflowProvider != null)
+	        {
+	          return workflowProvider.GetWorkflow(item);
+	        }
+	      }
+	      return null;
+	    }
+
+			private Item Lock(Item item)
+	    {
+	      if (TemplateManager.IsFieldPartOfTemplate(FieldIDs.Lock, item) && !item.Locking.Lock())
+	      {
+	        return null;
+	      }
+	      return item;
+	    }
+
+		}
+
+
+
 		protected event ItemCreatedDelegate ItemCreated;
 
 		protected void Add(ClientPipelineArgs args)
@@ -54,18 +279,19 @@ namespace Sitecore.Shell.Framework.Commands
 						else
 						{
 							Item item3 = null;
+              WorkflowSubstitute workflow = new WorkflowSubstitute();
 							try
 							{
 								if (item.TemplateID == TemplateIDs.BranchTemplate)
 								{
 									BranchItem branch = item;
-									item3 = Context.Workflow.AddItem(args.Result, branch, parent);
+									item3 = workflow.AddItem(args.Result, branch, parent);
 									Log.Audit(this, "Add from branch: {0}", new string[] { AuditFormatter.FormatItem((Item)branch) });
 								}
 								else
 								{
 									TemplateItem template = item;
-									item3 = Context.Workflow.AddItem(args.Result, template, parent);
+									item3 = workflow.AddItem(args.Result, template, parent);
 									Log.Audit(this, "Add from template: {0}", new string[] { AuditFormatter.FormatItem((Item)template) });
 								}
 							}
