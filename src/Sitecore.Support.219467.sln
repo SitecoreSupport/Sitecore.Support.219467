@@ -1,0 +1,22 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25123.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{39DA88EA-9AF6-4CEA-A955-E8E8C0F87918}") = "Sitecore.Support.219467", "Sitecore.Support.219467\Sitecore.Support.219467.csproj", "{A1C7FD3F-5A13-43D9-BD13-CDF496EBDC2C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1C7FD3F-5A13-43D9-BD13-CDF496EBDC2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1C7FD3F-5A13-43D9-BD13-CDF496EBDC2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1C7FD3F-5A13-43D9-BD13-CDF496EBDC2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1C7FD3F-5A13-43D9-BD13-CDF496EBDC2C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
